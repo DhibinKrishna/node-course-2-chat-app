@@ -38,6 +38,6 @@ io.on('connection', (socket) => {
     });
 });
 
-server.listen(3000, () => { //app.listen inernally uses http.createServer()
+server.listen(port, () => { //app.listen inernally uses http.createServer()
     console.log(`Server up on port ${port}`);
 });
