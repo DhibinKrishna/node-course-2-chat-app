@@ -4,16 +4,20 @@ const express = require('express');
 const socketIO = require('socket.io');
 
 const {generateMessage, generateLocationMessage} = require('./utils/message');
+const {isRealString} = require('./utils/validation');
+const {Users} = require('./utils/users');
+
 const publicPath = path.join(__dirname + '/../public');
 //console.log(__dirname + '/../public'); //old way
 //console.log(path.join(__dirname + '/../public'));
 const port = process.env.PORT || 3000;
-
 var app = express(); //express internally uses http module
 // var server = http.createServer((req, res) => {
 // });
 var server = http.createServer(app);
 var io = socketIO(server); //For using socketio, use http module
+var users = new Users();
+
 app.use(express.static(publicPath));
 
 io.on('connection', (socket) => {
@@ -25,9 +29,34 @@ io.on('connection', (socket) => {
     //     createAt: new Date().getTime()
     // });
 
-    socket.emit('newMessage', generateMessage('Admin', 'Welcome to chat app'));
+    // socket.emit('newMessage', generateMessage('Admin', 'Welcome to chat app'));
+    // socket.broadcast.emit('newMessage', generateMessage('Admin', 'New user joined'));
 
-    socket.broadcast.emit('newMessage', generateMessage('Admin', 'New user joined'));
+    socket.on('join', (params, callback) => {
+        if (!isRealString(params.name) || !isRealString(params.room)) {
+            return callback('Name and room name are required');
+        };
+
+        socket.join(params.room); //That's it to join
+        //socket.leave('room name');
+        users.removeUser(socket.id); //just remove and add
+        users.addUser(socket.id, params.name, params.room);
+
+        io.to(params.room).emit('updateUserList', users.getUserList(params.room));
+
+        //io.emit - for all
+        //socket.broadcast.emit - for broadcast
+        //socket.emit - to specific user
+
+        //io.to('Roomname').emit - for all in the room
+        //socket.broadcast.to('Roomname').emit - for room broadcast
+        //socket.emit - No separate room specific target, since it is to specific user
+
+        socket.emit('newMessage', generateMessage('Admin', 'Welcome to chat app'));
+        socket.broadcast.to(params.room).emit('newMessage', generateMessage('Admin', `${params.name} has joined`));
+
+        callback(); //No error parameter reqd
+    });
 
     socket.on('createMessage', (message, callback) => {
         io.emit('newMessage', generateMessage(message.from, message.text));
@@ -45,7 +74,12 @@ io.on('connection', (socket) => {
     });
 
     socket.on('disconnect', () => {
-        console.log('User was disconnected');
+        let user = users.removeUser(socket.id);
+
+        if (user) {
+            io.to(user.room).emit('updateUserList', users.getUserList(user.room));
+            io.to(user.room).emit('newMessage', generateMessage('Admin', `${user.name} has left.`));
+        }
     });
 });
 
